@@ -5,7 +5,7 @@ a Huracán-style V10 and an AMG C43-style V6 biturbo, with a virtual driver that
 (quickshifts at redline, rev-matched downshifts, limiter bounces, overrun crackle) or idles in the
 garage. Nothing is a recording or a loop.
 
-Live at https://eklavyamirani.github.io/redline-focus/
+Live at https://github.ekkylab.uk/redline-focus/
 
 ## Run
 
