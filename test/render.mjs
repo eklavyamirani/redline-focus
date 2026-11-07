@@ -15,7 +15,7 @@ new Function('AudioWorkletProcessor', 'registerProcessor', 'sampleRate', src)(
 
 const secs = +process.argv[2] || 40;
 const wav = process.argv.includes('--wav');
-const scenes = ['idle', 'cruise', 'canyon', 'track', 'tour'];
+const scenes = ['idle', 'track'];
 
 function writeWav(path, L, R) {
   const n = L.length, buf = Buffer.alloc(44 + n * 4);
