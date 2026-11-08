@@ -11,6 +11,12 @@ Live at https://github.ekkylab.uk/redline-focus/
 
 Open `index.html` in a browser (Chrome, Safari, Firefox). No build, no server, no dependencies.
 
+## iPhone and iPad
+
+On iOS/iPadOS 17+ the page asks Safari for a music-style "playback" audio session, so the engine
+keeps running with the display off, shows up in Now Playing (lock screen, Control Center) with
+play/pause, and track skip switches engines. Like a music app, it also plays with the silent switch on.
+
 ## Record
 
 Press **Record** (or <kbd>R</kbd>) to capture the session; stopping the engine or the session timer
