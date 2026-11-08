@@ -645,7 +645,7 @@ if (!SCENES.some(s => s[0] === S.scene)) S.scene = DEFAULTS.scene;
 const save = () => localStorage.setItem('redline-focus', JSON.stringify(S));
 
 let ctx, node, toneF, dryG, wetG, volG, fadeG, recDest;
-let playing = false, stopTimer = null, sessionTimer = null, sessionEnd = 0;
+let playing = false, resuming = false, stopTimer = null, sessionTimer = null, sessionEnd = 0;
 let telem = { rpm: 0, gear: 0, kmh: 0, label: '', evId: 0 }, lastEvId = 0, evTimer = null;
 
 function makeIR(ctx, sec = 2.4) {
@@ -676,6 +676,13 @@ async function ensureAudio() {
   } catch {
     await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([code], { type: 'application/javascript' })));
   }
+  // iOS can stop the context on its own: a pause from Control Center or the lock screen, a call,
+  // Siri, headphones unplugged. Treat that as the user pausing, and never let the context run
+  // again unless start() asked for it, so the engine can't come back on by surprise.
+  ctx.onstatechange = () => {
+    if (ctx.state === 'running') { if (!playing) stop(0); }
+    else if (playing && !resuming) stop(0); // a stop() suspend can land while start() resumes
+  };
   node = new AudioWorkletNode(ctx, 'engine', { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
   node.port.onmessage = e => { telem = e.data; };
 
@@ -710,9 +717,18 @@ function applyMix() {
 }
 
 async function start() {
-  await ensureAudio();
-  clearTimeout(stopTimer);
-  await ctx.resume();
+  // Set before resuming so the statechange guard (see ensureAudio) reads this resume as wanted.
+  playing = true; resuming = true;
+  clearTimeout(stopTimer); stopTimer = null;
+  try {
+    await ensureAudio();
+    await ctx.resume();
+  } catch (e) {
+    playing = false; throw e;
+  } finally {
+    resuming = false;
+  }
+  if (!playing) return; // paused while starting
   node.port.postMessage({ type: 'start' });
   const t = ctx.currentTime;
   fadeG.gain.cancelScheduledValues(t);
@@ -725,18 +741,37 @@ async function start() {
   if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
 }
 
+// Stopping is one-way: once paused, sound comes back only through start() (button, Space, or a
+// Now Playing play press). fade = 0 silences and suspends immediately.
 function stop(fade = 0.8) {
-  if (!ctx || !playing) return;
+  const was = playing;
   playing = false; sessionEnd = 0;
-  const t = ctx.currentTime;
-  fadeG.gain.cancelScheduledValues(t);
-  fadeG.gain.setValueAtTime(fadeG.gain.value, t);
-  fadeG.gain.linearRampToValueAtTime(0, t + fade);
-  clearTimeout(stopTimer);
-  stopTimer = setTimeout(() => { stopRecording(); ctx.suspend(); }, fade * 1000 + 100);
+  if (!ctx) return;
+  clearTimeout(stopTimer); stopTimer = null;
+  clearTimeout(sessionTimer);
+  if (fade > 0 && was && ctx.state === 'running') {
+    const t = ctx.currentTime;
+    fadeG.gain.cancelScheduledValues(t);
+    fadeG.gain.setValueAtTime(fadeG.gain.value, t);
+    fadeG.gain.linearRampToValueAtTime(0, t + fade);
+    stopTimer = setTimeout(silence, fade * 1000 + 100);
+  } else {
+    silence();
+  }
   $('play').textContent = 'Start engine'; $('play').classList.remove('on');
   $('countdown').textContent = '';
   if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+}
+
+// Zero the output and suspend from script. A script suspend is also what stops WebKit from
+// resuming the context by itself later (e.g. on unlock).
+function silence() {
+  stopTimer = null;
+  const t = ctx.currentTime;
+  fadeG.gain.cancelScheduledValues(t);
+  fadeG.gain.setValueAtTime(0, t);
+  stopRecording();
+  ctx.suspend().catch(() => {});
 }
 
 function scheduleSession() {
@@ -826,7 +861,7 @@ function buildUI() {
     nowPlaying();
     const ids = Object.keys(PRESETS);
     const skip = d => setEngine(ids[(ids.indexOf(S.engine) + d + ids.length) % ids.length]);
-    const actions = { play: () => start(), pause: () => stop(), stop: () => stop(),
+    const actions = { play: () => start(), pause: () => stop(0), stop: () => stop(0),
       nexttrack: () => skip(1), previoustrack: () => skip(-1) };
     for (const [a, fn] of Object.entries(actions)) {
       try { navigator.mediaSession.setActionHandler(a, fn); } catch {} // unsupported actions throw
@@ -876,12 +911,6 @@ function drawArtwork() {
   g.fillStyle = '#e3262b'; g.beginPath(); g.arc(cx, cy, N * 0.035, 0, TAU_UI); g.fill();
   return c.toDataURL('image/png');
 }
-
-// iOS can leave the context interrupted after a call, Siri or another app's audio; pick back up
-// when the page is shown again.
-document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && playing && ctx && ctx.state !== 'running') ctx.resume().catch(() => {});
-});
 
 function syncSel() {
   document.querySelectorAll('#engines .card').forEach(b => b.classList.toggle('sel', b.dataset.id === S.engine));
