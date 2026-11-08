@@ -16,6 +16,7 @@ Open `index.html` in a browser (Chrome, Safari, Firefox). No build, no server, n
 On iOS/iPadOS 17+ the page asks Safari for a music-style "playback" audio session, so the engine
 keeps running with the display off, shows up in Now Playing (lock screen, Control Center) with
 play/pause, and track skip switches engines. Like a music app, it also plays with the silent switch on.
+Confirmed working on iPhone.
 
 ## Record
 
